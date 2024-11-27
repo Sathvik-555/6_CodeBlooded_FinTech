@@ -5,4 +5,6 @@ langchain-core
 langchain-ollama
 python-dotenv
 beautifulsoup4
+matplotlib
+yfinance
 
