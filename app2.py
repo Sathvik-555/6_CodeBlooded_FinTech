@@ -59,7 +59,7 @@ st.markdown('<h1 class="header">AI Optimized Resource Allocator </h1>', unsafe_a
 with st.spinner("Loading content from the predefined website..."):
     try:
         # Load content from the website
-        loader_multiple_pages = WebBaseLoader(["https://www.nseindia.com/", "https://portal.tradebrains.in/", "https://www.magicbricks.com/Property-Rates-Trends/ALL-RESIDENTIAL-rates-in-Bangalore"])
+        loader_multiple_pages = WebBaseLoader(["https://www.nseindia.com/", "https://portal.tradebrains.in/"])
         loader_multiple_pages.requests_kwargs = {'verify':False}
 
 
