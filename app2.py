@@ -20,23 +20,10 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_ollama import ChatOllama
 from langchain.schema import Document
 
-# Load environment variables from .env file
-load_dotenv()
-
-# Get Replicate API token from environment variables
-replicate_api_token = os.getenv("REPLICATE_API_TOKEN")
-
-# Ensure the API token is available
-if not replicate_api_token:
-    st.error("Replicate API token not found. Please set the REPLICATE_API_TOKEN in your .env file.")
-else:
-    headers = {
-        "Authorization": f"Bearer {replicate_api_token}"
-    }
-
 # Initialize environment variables and suppress warnings
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 warnings.filterwarnings("ignore")
+load_dotenv()
 
 # Streamlit app configuration
 st.set_page_config(page_title="Comprehensive Stock Dashboard", layout="wide")
@@ -120,6 +107,7 @@ def fetch_stock_price(ticker, exchange="NSE"):
         st.error(f"Error fetching stock data: {e}")
         return None
 
+# Real-time stock tracking
 # Real-time stock tracking (with a limit of 3 updates)
 def track_real_time_prices(ticker, exchange="NSE"):
     st.markdown("### Real-Time Stock Prices")
