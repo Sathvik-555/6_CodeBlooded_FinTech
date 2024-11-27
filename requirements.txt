@@ -4,3 +4,5 @@ langchain-community
 langchain-core
 langchain-ollama
 python-dotenv
+beautifulsoup4
+
