@@ -74,7 +74,7 @@ with st.spinner("Loading content from the predefined website..."):
             chunks = text_splitter.split_documents(docs)
 
             # Initialize embeddings
-            embeddings = OllamaEmbeddings(model='nomic-embed-text', base_url="http://localhost:11434")
+            embeddings = OllamaEmbeddings(model='nomic-embed-text', base_url="https://6codebloodedfintech-fqfjw2bhkkfd2ygbrh3wj6.streamlit.app/")
 
             # Create FAISS index
             d = len(embeddings.embed_query("test query"))  # Determine embedding dimensionality
@@ -104,7 +104,7 @@ with st.spinner("Loading content from the predefined website..."):
             def format_docs(docs):
                 return "\n\n".join([doc.page_content for doc in docs])
 
-            model = ChatOllama(model="llama3.2", base_url="http://localhost:11434")
+            model = ChatOllama(model="llama3.2", base_url="https://6codebloodedfintech-fqfjw2bhkkfd2ygbrh3wj6.streamlit.app/")
             rag_chain = (
                 RunnableMap({
                     "context": lambda query: retriever.search(query=query, search_type='similarity', k =5),
