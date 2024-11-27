@@ -7,4 +7,9 @@ python-dotenv
 beautifulsoup4
 matplotlib
 yfinance
+pandas
+numpy
+requests
+scipy
+langchain
 
