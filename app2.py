@@ -1,37 +1,34 @@
-import streamlit as st
 import os
 import warnings
 import requests
 import time
 import pandas as pd
-import numpy as np  
+import numpy as np
 import faiss
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from matplotlib import pyplot as plt
-from scipy.interpolate import make_interp_spline
-import yfinance as yf
 from sklearn.preprocessing import MinMaxScaler
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense, Dropout
+import yfinance as yf
 from langchain_ollama import OllamaEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_community.docstore.in_memory import InMemoryDocstore
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.runnables import RunnablePassthrough, RunnableMap
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_ollama import ChatOllama
-from langchain.schema import Document
+from textblob import TextBlob
+import streamlit as st
 
 # Initialize environment variables and suppress warnings
-os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
-warnings.filterwarnings("ignore")
 load_dotenv()
+warnings.filterwarnings("ignore")
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
 # Streamlit app configuration
-st.set_page_config(page_title="Comprehensive Stock and Gold Dashboard", layout="wide")
+st.set_page_config(page_title="Integrated Stock Dashboard", layout="wide")
 
-# Custom CSS
+# Custom CSS for styling
 st.markdown("""
     <style>
     .header {
@@ -55,199 +52,161 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Title
-st.markdown('<h1 class="header">Comprehensive Stock and Gold Price Dashboard</h1>', unsafe_allow_html=True)
+st.markdown('<h1 class="header">Integrated Stock Dashboard</h1>', unsafe_allow_html=True)
 
-# Embeddings and vector store setup for RAG Chain (Optional, can be used later for more features)
-embeddings = OllamaEmbeddings(model='nomic-embed-text', base_url="http://localhost:11434")
-d = len(embeddings.embed_query("test query"))
-index = faiss.IndexFlatL2(d)
-vector_store = FAISS(
-    embedding_function=embeddings,
-    index=index,
-    docstore=InMemoryDocstore(),
-    index_to_docstore_id={}
-)
+# Sidebar for navigation
+st.sidebar.title("Navigation")
+page = st.sidebar.radio("Select a Page", ["Dashboard", "Real-Time Tracking", "Historical Data", "Sentiment Analysis", "Prediction"])
 
-# Stock Functions
-# Fetch stock price
-def fetch_stock_price(ticker, exchange="NSE"):
+# Function to fetch real-time stock price
+def fetch_stock_price(ticker):
     try:
-        url = f'https://www.google.com/finance/quote/{ticker}:{exchange}'
-        response = requests.get(url)
-        soup = BeautifulSoup(response.text, 'html.parser')
-        price = float(soup.find(class_="YMlKec fxKbKc").text.strip()[1:].replace(",", ""))
-        previous_close = float(soup.find(class_="P6K39c").text.strip()[1:].replace(",", ""))
-        revenue = soup.find(class_="QXDnM").text if soup.find(class_="QXDnM") else "N/A"
-        news = soup.find(class_="Yfwt5").text if soup.find(class_="Yfwt5") else "No news available"
-        about = soup.find(class_="bLLb2d").text if soup.find(class_="bLLb2d") else "No details available"
-
-        return {"Price": price, "Previous Close": previous_close, "Revenue": revenue, "News": news, "About": about}
+        stock = yf.Ticker(ticker)
+        data = stock.history(period="1d")
+        if not data.empty:
+            return {"Price": round(data["Close"].iloc[-1], 2)}
+        else:
+            raise ValueError("No price data available for the ticker.")
     except Exception as e:
         st.error(f"Error fetching stock data: {e}")
         return None
 
-# Real-time stock tracking
-def track_real_time_prices(ticker, exchange="NSE"):
+# Real-time tracking
+def track_real_time_prices(ticker):
     st.markdown("### Real-Time Stock Prices")
     stock_prices = []
     times = []
-    fig, ax = plt.subplots()
-    
-    # Set the background to black
-    fig.patch.set_facecolor('black')
-    ax.set_facecolor('black')
-    
-    # Customize the axes to have white color
-    ax.spines['bottom'].set_color('white')  # X-axis
-    ax.spines['left'].set_color('white')    # Y-axis
-    ax.spines['top'].set_color('none')      # Hide the top spine
-    ax.spines['right'].set_color('none')    # Hide the right spine
-    
-    # Set the tick parameters (axes and labels in white)
-    ax.tick_params(axis='x', colors='white')  # X-axis ticks in white
-    ax.tick_params(axis='y', colors='white')  # Y-axis ticks in white
-    
-    # Set the title and labels in white
-    ax.set_title(f"Real-Time Stock Prices for {ticker}", color='white')
-    ax.set_xlabel("Time Intervals", color='white')
-    ax.set_ylabel("Price (₹)", color='white')
-    
-    # Add legend with white text
-    ax.legend(facecolor='black', edgecolor='white', labelcolor='white')
-    
-    # Initialize line plot with red color for stock prices
-    line, = ax.plot([], [], label="Stock Price (₹)", color='red')
 
+    for timeval in range(3):  # Limit to 3 updates for demo
+        stock_data = fetch_stock_price(ticker)
+        if stock_data:
+            stock_prices.append(stock_data["Price"])
+            times.append(timeval)
+
+            plt.figure(figsize=(10, 5))
+            plt.plot(times, stock_prices, marker="o", color="red")
+            plt.title(f"Real-Time Stock Prices for {ticker}", fontsize=16)
+            plt.xlabel("Time Interval", fontsize=12)
+            plt.ylabel("Price ($)", fontsize=12)
+            st.pyplot()
+        time.sleep(1)
+
+# Historical data visualization
+def plot_historical_data(ticker, start, end):
     try:
-        for timeval in range(3):  # Limit to 3 updates for demo
-            stock_data = fetch_stock_price(ticker, exchange)
-            if stock_data:
-                stock_prices.append(stock_data["Price"])
-                times.append(timeval)
+        df = yf.download(ticker, start=start, end=end)
+        if not df.empty:
+            ma100 = df['Close'].rolling(100).mean()
 
-                if len(times) > 3:
-                    y_new = np.linspace(min(times), max(times), 300)
-                    spl = make_interp_spline(times, stock_prices, k=2)
-                    x_smooth = spl(y_new)
-                else:
-                    y_new = times
-                    x_smooth = stock_prices
-
-                # Update plot with smoothed stock price line in red
-                line.set_xdata(y_new)
-                line.set_ydata(x_smooth)
-
-                # Redraw the plot on Streamlit
-                ax.relim()  # Recompute limits
-                ax.autoscale_view()  # Rescale view
-                st.pyplot(fig)  # Display updated plot
-
-                # Clear figure to avoid overlap in updates
-                fig.clf()
-                fig, ax = plt.subplots()
-                ax.set_facecolor('black')  # Reset background to black
-                ax.spines['bottom'].set_color('white')
-                ax.spines['left'].set_color('white')
-                ax.set_title(f"Real-Time Stock Prices for {ticker}", color='white')
-                ax.set_xlabel("Time Intervals", color='white')
-                ax.set_ylabel("Price (₹)", color='white')
-                ax.legend(facecolor='black', edgecolor='white', labelcolor='white')
-                line, = ax.plot([], [], label="Stock Price (₹)", color='red')
-
-            time.sleep(1)  # Delay between updates
+            plt.figure(figsize=(12, 6))
+            plt.plot(df['Close'], label="Close Price", color='blue')
+            plt.plot(ma100, label="100-Day Moving Average", color='red')
+            plt.title(f"{ticker} Stock Prices")
+            plt.xlabel("Date")
+            plt.ylabel("Price ($)")
+            plt.legend()
+            st.pyplot()
+        else:
+            st.error("Error: No historical data available.")
     except Exception as e:
-        st.error(f"Error fetching real-time prices: {e}")
+        st.error(f"Error fetching historical stock data: {e}")
 
-# Historical stock data with moving average
-def plot_historical_data(ticker, start='2010-01-01', end='2024-01-01'):
-    df = yf.download(ticker, start=start, end=end)
-    if not df.empty:
-        ma100 = df['Close'].rolling(100).mean()
+# Sentiment analysis of recent news
+def fetch_news_and_analyze_sentiment(ticker):
+    news_api_key = os.getenv("NEWS_API_KEY", "pub_60597507c72081d03d2bd07b8a8410e3e0c5f")
+    news_url = f"https://newsdata.io/api/1/news?apikey={news_api_key}&q={ticker}&language=en"
 
-        fig, ax = plt.subplots(figsize=(12, 6))
+    st.markdown(f"### Recent News for {ticker}")
+    try:
+        response = requests.get(news_url)
+        news_data = response.json()
+        articles = news_data.get("results", [])
+        
+        if articles:
+            sentiments = []
+            for article in articles[:5]:  # Limit to 5 articles for simplicity
+                title = article.get("title", "")
+                description = article.get("description", "")
+                content = f"{title}. {description}"
+                sentiment = TextBlob(content).sentiment.polarity
+                sentiments.append(sentiment)
+                st.write(f"**{title}**")
+                st.write(f"Sentiment Polarity: {sentiment:.2f}")
 
-        # Set the background to black
-        fig.patch.set_facecolor('black')
-        ax.set_facecolor('black')
+            avg_sentiment = np.mean(sentiments)
+            st.write(f"### Average Sentiment Polarity: **{avg_sentiment:.2f}**")
+        else:
+            st.warning("No news articles found.")
+    except Exception as e:
+        st.error(f"Error fetching news data: {e}")
 
-        # Customize the axes to have white color
-        ax.spines['bottom'].set_color('white')  # X-axis
-        ax.spines['left'].set_color('white')    # Y-axis
-        ax.spines['top'].set_color('none')      # Hide the top spine
-        ax.spines['right'].set_color('none')    # Hide the right spine
+# Prediction using LSTM
+def predict_stock_prices(ticker, start_date, end_date, train_ratio):
+    st.write("Fetching historical data for prediction...")
+    data = yf.download(ticker, start=start_date, end=end_date)
+    if data.empty:
+        st.error("No data found. Please check the ticker or date range.")
+        return
 
-        # Set the tick parameters (axes and labels in white)
-        ax.tick_params(axis='x', colors='white')  # X-axis ticks in white
-        ax.tick_params(axis='y', colors='white')  # Y-axis ticks in white
-
-        # Set the title and labels in white
-        ax.set_title(f"{ticker} Stock Closing Prices", color='white')
-        ax.set_xlabel("Days", color='white')
-        ax.set_ylabel("Price (USD)", color='white')
-
-        # Plot the stock prices and 100-day moving average in red
-        ax.plot(df['Close'], label="Close Price", color='red')
-        ax.plot(ma100, 'r', label="100-Day MA")
-
-        ax.legend(facecolor='black', edgecolor='white', labelcolor='white')
-
-        st.pyplot(fig)
-    else:
-        st.error("Error fetching historical stock data")
-
-# LSTM stock prediction
-def predict_stock_price(ticker):
-    st.markdown("### Stock Price Prediction Using LSTM")
-    df = yf.download(ticker, period='5y', interval='1d')
-    df = df[['Close']]
-    df = df.dropna()
-
-    # Normalize the data
+    df = data[['Close']]
     scaler = MinMaxScaler(feature_range=(0, 1))
     scaled_data = scaler.fit_transform(df)
 
-    # Create the dataset
-    train_size = int(len(df) * 0.8)
-    train_data, test_data = scaled_data[:train_size], scaled_data[train_size:]
+    sequence_length = 60
+    X, y = [], []
+    for i in range(sequence_length, len(scaled_data)):
+        X.append(scaled_data[i-sequence_length:i, 0])
+        y.append(scaled_data[i, 0])
+    X, y = np.array(X), np.array(y)
+    X = np.reshape(X, (X.shape[0], X.shape[1], 1))
 
-    def create_dataset(data, time_step=60):
-        x_data, y_data = [], []
-        for i in range(len(data) - time_step - 1):
-            x_data.append(data[i:i + time_step])
-            y_data.append(data[i + time_step])
-        return np.array(x_data), np.array(y_data)
+    train_size = int(len(X) * train_ratio / 100)
+    X_train, X_test = X[:train_size], X[train_size:]
+    y_train, y_test = y[:train_size], y[train_size:]
 
-    x_train, y_train = create_dataset(train_data)
-    x_test, y_test = create_dataset(test_data)
-
-    # Reshape input for LSTM
-    x_train = np.reshape(x_train, (x_train.shape[0], x_train.shape[1], 1))
-    x_test = np.reshape(x_test, (x_test.shape[0], x_test.shape[1], 1))
-
-    # Build LSTM model
-    model = Sequential()
-    model.add(LSTM(units=50, return_sequences=True, input_shape=(x_train.shape[1], 1)))
-    model.add(Dropout(0.2))
-    model.add(LSTM(units=50, return_sequences=False))
-    model.add(Dropout(0.2))
-    model.add(Dense(units=1))
+    model = Sequential([
+        LSTM(units=50, return_sequences=True, input_shape=(X_train.shape[1], 1)),
+        Dropout(0.2),
+        LSTM(units=50, return_sequences=False),
+        Dropout(0.2),
+        Dense(units=1)
+    ])
     model.compile(optimizer='adam', loss='mean_squared_error')
+    st.write("Training the model...")
+    model.fit(X_train, y_train, epochs=5, batch_size=32, validation_data=(X_test, y_test), verbose=1)
 
-    # Train the model
-    model.fit(x_train, y_train, epochs=10, batch_size=32)
+    st.write("Generating predictions...")
+    predicted_prices = model.predict(X_test)
+    predicted_prices = scaler.inverse_transform(predicted_prices)
+    actual_prices = scaler.inverse_transform(y_test.reshape(-1, 1))
 
-    # Predict the stock price
-    predicted_price = model.predict(x_test)
-
-    # Rescale predictions
-    predicted_price = scaler.inverse_transform(predicted_price)
-
-    # Plot predictions
+    st.write("### Predicted vs Actual Prices")
     plt.figure(figsize=(12, 6))
-    plt.plot(df['Close'].values[-len(test_data):], color='blue', label='Real Stock Price')
-    plt.plot(predicted_price, color='red', label='Predicted Stock Price')
-    plt.title(f'{ticker} Stock Price Prediction')
-    plt.xlabel('Time')
-    plt.ylabel('Stock Price (USD)')
+    plt.plot(actual_prices, label="Actual Prices", color="blue")
+    plt.plot(predicted_prices, label="Predicted Prices", color="red")
+    plt.title(f"{ticker} Stock Price Prediction")
+    plt.xlabel("Days")
+    plt.ylabel("Price")
     plt.legend()
     st.pyplot()
+
+# Page logic
+if page == "Dashboard":
+    st.markdown("### Welcome to the Stock and Financial Dashboard!")
+elif page == "Real-Time Tracking":
+    ticker = st.sidebar.text_input("Enter Stock Ticker", value="AAPL")
+    track_real_time_prices(ticker)
+elif page == "Historical Data":
+    ticker = st.sidebar.text_input("Enter Stock Ticker", value="AAPL")
+    start_date = st.sidebar.date_input("Start Date", value=pd.to_datetime("2020-01-01"))
+    end_date = st.sidebar.date_input("End Date", value=pd.to_datetime("2024-01-01"))
+    plot_historical_data(ticker, start=start_date, end=end_date)
+elif page == "Sentiment Analysis":
+    ticker = st.sidebar.text_input("Enter Stock Ticker", value="AAPL")
+    fetch_news_and_analyze_sentiment(ticker)
+elif page == "Prediction":
+    ticker = st.sidebar.text_input("Enter Stock Ticker", value="AAPL")
+    start_date = st.sidebar.date_input("Start Date", value=pd.to_datetime("2015-01-01"))
+    end_date = st.sidebar.date_input("End Date", value=pd.to_datetime("2023-01-01"))
+    train_ratio = st.sidebar.slider("Training Data Ratio (%)", 50, 90, 80)
+    predict_stock_prices(ticker, start_date, end_date, train_ratio)
